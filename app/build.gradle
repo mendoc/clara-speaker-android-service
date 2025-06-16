@@ -1,0 +1,82 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.gms.google-services'
+    id 'kotlin-kapt'
+}
+
+android {
+    namespace 'pro.ongoua.claraspeaker'
+    compileSdk 34 // Mis en cohérence avec targetSdk
+
+    // On lit le fichier local.properties
+    Properties properties = new Properties()
+    if (rootProject.file("local.properties").exists()) {
+        properties.load(rootProject.file("local.properties").newDataInputStream())
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    defaultConfig {
+        applicationId "pro.ongoua.claraspeaker"
+        minSdk 24
+        targetSdk 34 // On cible Android 14
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField "String", "GOOGLE_TTS_API_KEY", "\"${properties.getProperty("google.tts.apikey")}\""
+        }
+        debug {
+            buildConfigField "String", "GOOGLE_TTS_API_KEY", "\"${properties.getProperty("google.tts.apikey")}\""
+        }
+    }
+
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+}
+
+dependencies {
+    // Firebase BOM (Bill of Materials) - gère les versions des librairies Firebase pour vous
+    implementation platform('com.google.firebase:firebase-bom:33.15.0')
+
+    // AndroidX Core & UI
+    implementation 'androidx.core:core-ktx:1.12.0' // <-- Version fixe et compatible
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0' // Version plus récente
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.1'
+
+    // Firebase Cloud Messaging (la version est gérée par le BOM)
+    implementation 'com.google.firebase:firebase-messaging-ktx'
+
+    // Retrofit pour les appels réseau (2.9.0 est la dernière version stable majeure)
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+
+    // Tests
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    kapt "androidx.room:room-compiler:$room_version"
+}
