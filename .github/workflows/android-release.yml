@@ -1,0 +1,45 @@
+name: Build and Release Android Clara Speaker App
+
+on:
+  push:
+    branches:
+      - main 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name:  checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Signed APK
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          # Le nom du tag sera la date et l'heure, ex: v2025.07.05.2130
+          tag_name: v${{ env.RELEASE_DATE }}
+          # Le nom de la release sera "Release v2025.07.05.2130"
+          name: Release ${{ env.RELEASE_DATE }}
+          # Fichiers à attacher à la release
+          files: app/build/outputs/apk/release/app-release.apk
+        env:
+          # Créer une variable pour la date qui sera utilisée dans le nom et le tag
+          RELEASE_DATE: $(date -u +'%Y.%m.%d.%H%M')
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
