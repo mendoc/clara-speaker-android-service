@@ -1,14 +1,23 @@
 package pro.ongoua.claraspeaker
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -25,15 +34,54 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private val summaryViewModel: SummaryViewModel by viewModels()
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var summaryAdapter: SummaryAdapter
+    private lateinit var fcmTokenView: TextView
+    private lateinit var copyTokenButton: Button
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        fcmTokenView = findViewById(R.id.fcmTokenView)
+        copyTokenButton = findViewById(R.id.copyTokenButton)
+
+        setupRecyclerView()
+
+        // On observe les changements dans la base de données
+        summaryViewModel.latestSummaries.observe(this) { summaries ->
+            summaries?.let {
+                // L'adapter met à jour la liste affichée automatiquement
+                summaryAdapter.submitList(it)
+            }
+        }
 
         // On demande la permission au démarrage
         askBluetoothConnectPermission()
 
         // On lance la récupération du token au démarrage de l'activité
         retrieveAndSendFcmToken()
+
+        copyTokenButton.setOnClickListener {
+            copyTokenToClipboard()
+        }
+    }
+
+    private fun setupRecyclerView() {
+        recyclerView = findViewById(R.id.recyclerView)
+        summaryAdapter = SummaryAdapter(
+            onItemClicked = { summary ->
+                // Le clic est géré ici et transmis au ViewModel
+                summaryViewModel.onSummaryClicked(summary)
+            },
+            onDeleteClicked = { summary ->
+                // La suppression est gérée ici et transmise au ViewModel
+                summaryViewModel.deleteSummary(summary)
+            }
+        )
+        recyclerView.adapter = summaryAdapter
+        recyclerView.layoutManager = LinearLayoutManager(this)
     }
 
     private fun askBluetoothConnectPermission() {
@@ -75,6 +123,7 @@ class MainActivity : AppCompatActivity() {
                 val token = FirebaseMessaging.getInstance().token.await()
 
                 Log.d("ClaraSpeaker@MainActivity", "Token récupéré au démarrage : $token")
+                fcmTokenView.text = token
 
                 // C'est ici que vous envoyez le token à votre serveur (via une API)
                 sendTokenToServer(token)
@@ -82,7 +131,18 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 // Gérer l'erreur si la récupération du token échoue
                 Log.e("ClaraSpeaker@MainActivity", "La récupération du token a échoué", e)
+                fcmTokenView.text = "Erreur lors de la récupération du token."
             }
+        }
+    }
+
+    private fun copyTokenToClipboard() {
+        val token = fcmTokenView.text.toString()
+        if (token.isNotEmpty() && !token.startsWith("Erreur")) {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("FCM Token", token)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Token copié dans le presse-papiers", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [Summary::class], version = 1)
+@Database(entities = [Summary::class], version = 5)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun summaryDao(): SummaryDao
 
@@ -17,7 +17,9 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java, "clara-speaker-db"
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration()
+                    .build().also { INSTANCE = it }
             }
         }
     }
