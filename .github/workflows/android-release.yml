@@ -39,6 +39,9 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
+      - name: List Build Outputs
+        run: ls -R app/build/outputs/
+        
       - name: Generate Tag Name
         id: tag
         run: echo "RELEASE_TAG=v$(date -u +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
