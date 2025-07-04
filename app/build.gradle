@@ -38,7 +38,7 @@ android {
         release {
             if (project.hasProperty('signingKeyBase64')) {
                 def keystoreFile = new File(project.rootDir, "release.jks")
-                keystoreFile.write(Base64.getDecoder().decode(project.property('signingKeyBase64')))
+                keystoreFile.bytes = Base64.getDecoder().decode(project.property('signingKeyBase64'))
 
                 storeFile keystoreFile
                 storePassword project.property('keystorePassword')
