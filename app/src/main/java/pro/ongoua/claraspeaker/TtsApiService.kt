@@ -1,26 +1,29 @@
 package pro.ongoua.claraspeaker
 
+import com.google.gson.annotations.SerializedName
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.Header
 import retrofit2.http.POST
-import retrofit2.http.Query
+import retrofit2.http.Path
 
 /**
- * Interface Retrofit pour l'API Google Cloud Text-to-Speech.
+ * Interface Retrofit pour l'API Text-to-Speech d'ElevenLabs.
+ *
+ * La voix est passée dans l'URL (voiceId), la clé dans le header `xi-api-key`,
+ * et la réponse est l'audio **brut** (mp3), pas du JSON encodé en Base64.
  */
 interface TtsApiService {
-    @POST("v1/text:synthesize")
+    @POST("v1/text-to-speech/{voiceId}")
     suspend fun synthesizeText(
-        @Body body: TtsRequest,
-        @Query("key") apiKey: String
-    ): Response<TtsResponse>
+        @Path("voiceId") voiceId: String,
+        @Header("xi-api-key") apiKey: String,
+        @Body body: TtsRequest
+    ): Response<ResponseBody>
 }
 
-// --- Classes de données pour la requête et la réponse ---
-
-data class TtsRequest(val input: Input, val voice: Voice, val audioConfig: AudioConfig)
-data class Input(val text: String)
-data class Voice(val languageCode: String, val name: String)
-data class AudioConfig(val audioEncoding: String)
-
-data class TtsResponse(val audioContent: String)
+data class TtsRequest(
+    val text: String,
+    @SerializedName("model_id") val modelId: String
+)

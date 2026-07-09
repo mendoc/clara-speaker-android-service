@@ -2,7 +2,6 @@ package pro.ongoua.claraspeaker
 
 import android.content.Context
 import android.media.MediaPlayer
-import android.util.Base64
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -17,19 +16,10 @@ object AudioPlayerManager {
     private const val TAG = "ClaraSpeaker@AudioPlayerManager"
     private var currentMediaPlayer: MediaPlayer? = null
 
-
-    private val frenchVoices = listOf(
-        "fr-FR-Chirp-HD-D", "fr-FR-Chirp-HD-F", "fr-FR-Chirp-HD-O",
-        "fr-FR-Chirp3-HD-Aoede", "fr-FR-Chirp3-HD-Charon", "fr-FR-Chirp3-HD-Fenrir",
-        "fr-FR-Chirp3-HD-Kore", "fr-FR-Chirp3-HD-Leda", "fr-FR-Chirp3-HD-Orus",
-        "fr-FR-Chirp3-HD-Puck", "fr-FR-Chirp3-HD-Zephyr", "fr-FR-Neural2-F",
-        "fr-FR-Neural2-G", "fr-FR-Polyglot-1", "fr-FR-Standard-A",
-        "fr-FR-Standard-B", "fr-FR-Standard-C", "fr-FR-Standard-D",
-        "fr-FR-Standard-E", "fr-FR-Standard-F", "fr-FR-Standard-G",
-        "fr-FR-Studio-A", "fr-FR-Studio-D", "fr-FR-Wavenet-A",
-        "fr-FR-Wavenet-B", "fr-FR-Wavenet-C", "fr-FR-Wavenet-D",
-        "fr-FR-Wavenet-E", "fr-FR-Wavenet-F", "fr-FR-Wavenet-G"
-    )
+    // Voix ElevenLabs : « David - Gruff Cowboy », modèle Eleven v3.
+    private const val VOICE_ID = "OYWwCdDHouzDwiZJWOOu"
+    private const val VOICE_NAME = "David - Gruff Cowboy"
+    private const val MODEL_ID = "eleven_v3"
 
     /**
      * Joue ou arrête un résumé.
@@ -71,30 +61,23 @@ object AudioPlayerManager {
      * La fonction publique principale. Elle prend un texte et s'occupe de tout.
      */
     suspend fun synthesizeAndPlay(context: Context, summary: Summary) {
-        val apiKey = BuildConfig.GOOGLE_TTS_API_KEY
+        val apiKey = BuildConfig.ELEVENLABS_API_KEY
         if (apiKey.isNullOrEmpty() || apiKey == "null") {
-            Log.e(TAG, "ERREUR : La clé API pour Google TTS n'est pas configurée.")
+            Log.e(TAG, "ERREUR : La clé API ElevenLabs n'est pas configurée.")
             return
         }
 
         val apiService = RetrofitClient.apiService
-        val chosenVoice = frenchVoices.random()
-        Log.d(TAG, "Voix choisie au hasard : $chosenVoice")
-
-        val request = TtsRequest(
-            input = Input(text = summary.text),
-            voice = Voice(languageCode = "fr-FR", name = chosenVoice),
-            audioConfig = AudioConfig(audioEncoding = "MP3")
-        )
+        val request = TtsRequest(text = summary.text, modelId = MODEL_ID)
 
         try {
-            val response = apiService.synthesizeText(request, apiKey)
+            val response = apiService.synthesizeText(VOICE_ID, apiKey, request)
             if (response.isSuccessful && response.body() != null) {
-                val audioContent = response.body()!!.audioContent
-                val audioFile = saveAudioToFile(context, audioContent, summary.id)
+                val audioData = response.body()!!.bytes()
+                val audioFile = saveAudioToFile(context, audioData, summary.id)
                 if (audioFile != null) {
                     summary.isPlayed = true
-                    summary.voiceModel = chosenVoice
+                    summary.voiceModel = VOICE_NAME
                     summary.audioFilePath = audioFile.absolutePath
 
                     val dao = AppDatabase.getInstance(context).summaryDao()
@@ -113,12 +96,11 @@ object AudioPlayerManager {
     }
 
     /**
-     * Sauvegarde la chaîne Base64 dans un fichier MP3 dans le stockage interne.
+     * Sauvegarde les octets audio bruts (mp3) dans un fichier dans le stockage interne.
      * @return Le fichier sauvegardé, ou null en cas d'erreur.
      */
-    private fun saveAudioToFile(context: Context, base64Audio: String, summaryId: Int): File? {
+    private fun saveAudioToFile(context: Context, audioData: ByteArray, summaryId: Int): File? {
         return try {
-            val audioData = Base64.decode(base64Audio, Base64.DEFAULT)
             val file = File(context.filesDir, "summary_$summaryId.mp3")
             FileOutputStream(file).use { fos -> fos.write(audioData) }
             Log.d(TAG, "Fichier audio sauvegardé dans : ${file.absolutePath}")

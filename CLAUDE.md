@@ -34,18 +34,18 @@ Clara Speaker est un service Android (Kotlin, MVVM) qui reçoit des « résumés
 Deux éléments **non versionnés** sont nécessaires (voir `.gitignore`) :
 
 1. **`app/google-services.json`** — configuration Firebase. À télécharger depuis la console Firebase.
-2. **`local.properties`** à la racine, contenant la clé TTS. ⚠️ La propriété lue par `app/build.gradle` est `google.tts.apikey` (le README mentionne `GOOGLE_TTS_API_KEY`, mais le code utilise bien `google.tts.apikey`) :
+2. **`local.properties`** à la racine, contenant la clé TTS **ElevenLabs**. La propriété lue par `app/build.gradle` est `elevenlabs.apikey` :
    ```properties
-   google.tts.apikey=VOTRE_CLE_API
+   elevenlabs.apikey=VOTRE_CLE_API
    ```
-   Elle est exposée au code via `BuildConfig.GOOGLE_TTS_API_KEY`.
+   Elle est exposée au code via `BuildConfig.ELEVENLABS_API_KEY`.
 
 Pour un build release signé, passer les propriétés de signature en ligne de commande (elles injectent le keystore encodé en Base64, cf. `signingConfigs.release`) :
 ```bash
 ./gradlew assembleRelease -PsigningKeyBase64=... -PkeystorePassword=... -PkeyAlias=... -PkeyPassword=...
 ```
 
-Toolchain : Java/Kotlin 17, `compileSdk`/`targetSdk` 34, `minSdk` 24. Android Gradle Plugin 8.0.2, Kotlin 1.8.20.
+Toolchain : JDK 17, `compileSdk` 35, `targetSdk` 34, `minSdk` 24. Android Gradle Plugin 8.6.0, Kotlin 2.1.20, Gradle 8.7.
 
 ## Architecture
 
@@ -55,7 +55,7 @@ Le flux central est **événementiel**, pas piloté par l'UI. L'`Activity` ne se
 
 **Persistance Room (`AppDatabase`, `Summary`, `SummaryDao`)** — Source de vérité unique. Un `Summary` porte le texte, `isPlayed`, la date, le modèle de voix, et le chemin du fichier audio `.mp3` (rempli après synthèse). Le DAO distingue les résumés non lus (file d'attente) des résumés déjà joués (historique). Schémas Room exportés dans `app/schemas` (`room.schemaLocation`).
 
-**Synthèse & lecture (`AudioPlayerManager`, `TtsApiService`, `RetrofitClient`)** — `AudioPlayerManager` est un `object` singleton qui centralise TOUTE la logique audio. Il appelle l'API Google TTS via Retrofit (voix française tirée au hasard d'une liste prédéfinie), décode l'audio Base64 vers un `.mp3` en stockage interne, met à jour le `Summary` (chemin + `isPlayed = true`), et lit via `MediaPlayer`.
+**Synthèse & lecture (`AudioPlayerManager`, `TtsApiService`, `RetrofitClient`)** — `AudioPlayerManager` est un `object` singleton qui centralise TOUTE la logique audio. Il appelle l'API **ElevenLabs** (modèle `eleven_v3`, voix fixe « David - Gruff Cowboy », clé dans le header `xi-api-key`) via Retrofit, écrit les octets audio bruts (mp3) dans un `.mp3` en stockage interne, met à jour le `Summary` (chemin + `isPlayed = true`), et lit via `MediaPlayer`.
 
 **Lecture différée (`BluetoothConnectionReceiver`)** — Fonctionnalité clé. `BroadcastReceiver` sur `ACTION_ACL_CONNECTED` : à la connexion d'un appareil Bluetooth, lit une intro (« Vous avez X résumés en attente ») puis joue séquentiellement tous les `Summary` non lus, avec un délai entre chacun.
 
