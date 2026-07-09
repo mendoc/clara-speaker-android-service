@@ -31,6 +31,9 @@ jobs:
       - name: Create google-services.json
         run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > app/google-services.json
 
+      - name: Create local.properties
+        run: echo "elevenlabs.apikey=${{ secrets.ELEVENLABS_API_KEY }}" > local.properties
+
       - name: Build Signed APK
         run: |
           ./gradlew assembleRelease \
