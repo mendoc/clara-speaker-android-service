@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">ClaraSpeaker</string>
+
+    <!-- Écran d'authentification -->
+    <string name="auth_tagline">Vos résumés, lus à voix haute dès que votre casque se connecte.</string>
+    <string name="auth_sign_in_prompt">Connectez-vous pour recevoir et écouter vos résumés.</string>
+    <string name="auth_sign_in_button">Se connecter avec Google</string>
+    <string name="auth_sign_in_failed">La connexion a échoué. Réessayez.</string>
+    <string name="auth_sign_in_failed_code">La connexion a échoué (code %1$d). Réessayez.</string>
+
+    <!-- Écran principal -->
+    <string name="content_signed_in_as">Connecté : %1$s</string>
+    <string name="content_sign_out">Se déconnecter</string>
+    <string name="content_empty">Aucun résumé pour le moment.</string>
 </resources>

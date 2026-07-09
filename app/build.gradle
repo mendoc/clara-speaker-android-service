@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace 'pro.ongoua.claraspeaker'
-    compileSdk 34 // Mis en cohérence avec targetSdk
+    compileSdk 35 // Requis par androidx.credentials 1.6.0
 
     // On lit le fichier local.properties
     Properties properties = new Properties()
@@ -81,6 +81,22 @@ dependencies {
     // Firebase Cloud Messaging (la version est gérée par le BOM)
     implementation 'com.google.firebase:firebase-messaging-ktx'
 
+    // Firebase Firestore - synchronisation du fcmToken (version gérée par le BOM)
+    implementation 'com.google.firebase:firebase-firestore-ktx'
+
+    // Firebase Auth - authentifie l'écriture Firestore avec l'ID token Google
+    // (sans quoi request.auth est nul et les règles de sécurité refusent l'écriture)
+    implementation 'com.google.firebase:firebase-auth-ktx'
+
+    // Credential Manager - authentification Google (remplace l'API GoogleSignIn dépréciée).
+    // Le claim `sub` de l'ID token = l'ID de compte Google = l'ID du document Firestore.
+    // 1.6.0 inclut les correctifs du modèle de sécurité IPC d'Android 16
+    // (sans quoi la connexion échoue avec "[16] Account reauth failed").
+    implementation 'androidx.credentials:credentials:1.6.0'
+    implementation 'androidx.credentials:credentials-play-services-auth:1.6.0'
+    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
+    implementation 'com.google.android.gms:play-services-base:18.5.0'
+
     // Retrofit pour les appels réseau (2.9.0 est la dernière version stable majeure)
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
@@ -90,7 +106,7 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 
-    def room_version = "2.6.1"
+    def room_version = "2.8.4"
     implementation "androidx.room:room-runtime:$room_version"
     implementation "androidx.room:room-ktx:$room_version"
     kapt "androidx.room:room-compiler:$room_version"

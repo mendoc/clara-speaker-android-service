@@ -1,28 +1,40 @@
 package pro.ongoua.claraspeaker
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
-import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
+
+    private companion object {
+        const val TAG = "ClaraSpeaker@MainActivity"
+    }
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -35,36 +47,52 @@ class MainActivity : AppCompatActivity() {
         }
 
     private val summaryViewModel: SummaryViewModel by viewModels()
+
+    private lateinit var authView: View
+    private lateinit var contentView: View
+    private lateinit var signInButton: Button
+    private lateinit var authErrorView: TextView
+    private lateinit var accountView: TextView
+    private lateinit var signOutButton: Button
+    private lateinit var emptyView: TextView
     private lateinit var recyclerView: RecyclerView
     private lateinit var summaryAdapter: SummaryAdapter
-    private lateinit var fcmTokenView: TextView
-    private lateinit var copyTokenButton: Button
+
+    private val credentialManager by lazy { CredentialManager.create(this) }
+    private val firebaseAuth by lazy { FirebaseAuth.getInstance() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        fcmTokenView = findViewById(R.id.fcmTokenView)
-        copyTokenButton = findViewById(R.id.copyTokenButton)
+        authView = findViewById(R.id.authView)
+        contentView = findViewById(R.id.contentView)
+        signInButton = findViewById(R.id.signInButton)
+        authErrorView = findViewById(R.id.authErrorView)
+        accountView = findViewById(R.id.accountView)
+        signOutButton = findViewById(R.id.signOutButton)
+        emptyView = findViewById(R.id.emptyView)
 
         setupRecyclerView()
 
         // On observe les changements dans la base de données
         summaryViewModel.latestSummaries.observe(this) { summaries ->
-            summaries?.let {
-                // L'adapter met à jour la liste affichée automatiquement
-                summaryAdapter.submitList(it)
-            }
+            summaryAdapter.submitList(summaries.orEmpty())
+            emptyView.visibility = if (summaries.isNullOrEmpty()) View.VISIBLE else View.GONE
         }
+
+        signInButton.setOnClickListener { signInWithGoogle() }
+        signOutButton.setOnClickListener { signOut() }
 
         // On demande la permission au démarrage
         askBluetoothConnectPermission()
 
-        // On lance la récupération du token au démarrage de l'activité
-        retrieveAndSendFcmToken()
-
-        copyTokenButton.setOnClickListener {
-            copyTokenToClipboard()
+        // On restaure l'état à partir de la session persistée (ou l'écran de connexion).
+        val accountId = SessionStore.accountId(this)
+        if (accountId != null) {
+            showSignedIn(accountId, SessionStore.email(this))
+        } else {
+            showSignedOut(null)
         }
     }
 
@@ -111,48 +139,134 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Récupère le token FCM actuel et l'envoie au serveur.
-     * C'est la méthode à appeler au démarrage de l'application.
+     * Lance le flux « Se connecter avec Google » via Credential Manager.
+     * Le serverClientId est le client OAuth Web (généré à partir de google-services.json).
      */
-    private fun retrieveAndSendFcmToken() {
-        // On utilise le lifecycleScope pour que la coroutine soit automatiquement
-        // annulée si l'activité est détruite, évitant les fuites de mémoire.
+    private fun signInWithGoogle() {
+        authErrorView.visibility = View.GONE
+
+        val signInOption = GetSignInWithGoogleOption
+            .Builder(getString(R.string.default_web_client_id))
+            .build()
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(signInOption)
+            .build()
+
         lifecycleScope.launch {
             try {
-                // La méthode .token renvoie une Task, .await() la transforme en appel suspendu
-                val token = FirebaseMessaging.getInstance().token.await()
-
-                Log.d("ClaraSpeaker@MainActivity", "Token récupéré au démarrage : $token")
-                fcmTokenView.text = token
-
-                // C'est ici que vous envoyez le token à votre serveur (via une API)
-                sendTokenToServer(token)
-
-            } catch (e: Exception) {
-                // Gérer l'erreur si la récupération du token échoue
-                Log.e("ClaraSpeaker@MainActivity", "La récupération du token a échoué", e)
-                fcmTokenView.text = "Erreur lors de la récupération du token."
+                val response = credentialManager.getCredential(this@MainActivity, request)
+                handleSignInResponse(response)
+            } catch (e: GetCredentialException) {
+                Log.e(TAG, "Connexion via Credential Manager échouée", e)
+                showSignedOut(getString(R.string.auth_sign_in_failed))
             }
         }
     }
 
-    private fun copyTokenToClipboard() {
-        val token = fcmTokenView.text.toString()
-        if (token.isNotEmpty() && !token.startsWith("Erreur")) {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = ClipData.newPlainText("FCM Token", token)
-            clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "Token copié dans le presse-papiers", Toast.LENGTH_SHORT).show()
+    private fun handleSignInResponse(response: GetCredentialResponse) {
+        val credential = response.credential
+        if (credential is CustomCredential &&
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+            val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+            // Le claim `sub` de l'ID token est l'ID de compte Google (= ID du document Firestore).
+            val accountId = subjectFromIdToken(googleCredential.idToken)
+            if (accountId == null) {
+                Log.e(TAG, "ID token sans claim `sub`, synchronisation impossible.")
+                showSignedOut(getString(R.string.auth_sign_in_failed))
+                return
+            }
+            val email = googleCredential.id
+
+            // On s'authentifie auprès de Firebase avec l'ID token Google : indispensable
+            // pour que l'écriture Firestore passe les règles de sécurité (request.auth != null).
+            val firebaseCredential = GoogleAuthProvider.getCredential(googleCredential.idToken, null)
+            firebaseAuth.signInWithCredential(firebaseCredential)
+                .addOnSuccessListener {
+                    SessionStore.save(this, accountId, email)
+                    showSignedIn(accountId, email)
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Authentification Firebase échouée", e)
+                    showSignedOut(getString(R.string.auth_sign_in_failed))
+                }
+        } else {
+            Log.e(TAG, "Type d'identifiant inattendu : ${credential.type}")
+            showSignedOut(getString(R.string.auth_sign_in_failed))
         }
     }
 
     /**
-     * Fonction factice pour envoyer le token au serveur.
-     * Vous devrez implémenter la logique d'appel à votre API ici (ex: avec Retrofit).
+     * Décode la charge utile (payload) d'un ID token JWT et en extrait le claim `sub`.
      */
-    private fun sendTokenToServer(token: String) {
-        // TODO: Implémentez votre appel réseau ici pour envoyer le token
-        // à votre base de données ou votre backend, en l'associant à l'utilisateur si nécessaire.
-        Log.d("ClaraSpeaker@MainActivity", "Simulation d'envoi du token au serveur : $token")
+    private fun subjectFromIdToken(idToken: String): String? {
+        return try {
+            val parts = idToken.split(".")
+            if (parts.size < 2) return null
+            val payload = String(
+                Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+            )
+            JSONObject(payload).optString("sub").ifEmpty { null }
+        } catch (e: Exception) {
+            Log.e(TAG, "Impossible de décoder l'ID token", e)
+            null
+        }
+    }
+
+    /**
+     * Affiche l'écran d'authentification. [errorMessage] est non nul quand on y
+     * revient à la suite d'un échec de connexion.
+     */
+    private fun showSignedOut(errorMessage: String?) {
+        contentView.visibility = View.GONE
+        authView.visibility = View.VISIBLE
+        if (errorMessage != null) {
+            authErrorView.text = errorMessage
+            authErrorView.visibility = View.VISIBLE
+        } else {
+            authErrorView.visibility = View.GONE
+        }
+    }
+
+    /**
+     * Affiche le contenu principal pour le compte connecté et synchronise son token FCM.
+     */
+    private fun showSignedIn(accountId: String, email: String?) {
+        authView.visibility = View.GONE
+        contentView.visibility = View.VISIBLE
+        accountView.text = getString(R.string.content_signed_in_as, email ?: accountId)
+        syncFcmToken(accountId)
+    }
+
+    private fun signOut() {
+        firebaseAuth.signOut()
+        lifecycleScope.launch {
+            try {
+                credentialManager.clearCredentialState(
+                    androidx.credentials.ClearCredentialStateRequest()
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Échec du nettoyage de l'état d'identifiant", e)
+            }
+            SessionStore.clear(this@MainActivity)
+            showSignedOut(null)
+        }
+    }
+
+    /**
+     * Récupère le token FCM actuel et le synchronise dans Firestore pour le compte donné.
+     */
+    private fun syncFcmToken(accountId: String) {
+        // On utilise le lifecycleScope pour que la coroutine soit automatiquement
+        // annulée si l'activité est détruite, évitant les fuites de mémoire.
+        lifecycleScope.launch {
+            try {
+                val token = FirebaseMessaging.getInstance().token.await()
+                Log.d(TAG, "Token FCM récupéré : $token")
+                FirestoreSync.updateFcmToken(accountId, token)
+            } catch (e: Exception) {
+                Log.e(TAG, "La récupération du token FCM a échoué", e)
+            }
+        }
     }
 }

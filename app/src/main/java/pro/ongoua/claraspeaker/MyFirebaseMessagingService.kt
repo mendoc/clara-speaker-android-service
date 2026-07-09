@@ -55,15 +55,18 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d(TAG, "Nouveau token FCM généré : $token")
-        sendTokenToServer(token)
+
+        // On synchronise le nouveau token pour le compte Google actuellement connecté.
+        val accountId = SessionStore.accountId(this)
+        if (accountId != null) {
+            FirestoreSync.updateFcmToken(accountId, token)
+        } else {
+            Log.w(TAG, "Aucun compte Google connecté : token non synchronisé (sera fait au prochain lancement de l'app).")
+        }
     }
 
     private fun isBluetoothHeadsetConnected(): Boolean {
         val audioManager = applicationContext.getSystemService(AUDIO_SERVICE) as AudioManager
         return audioManager.isBluetoothA2dpOn
-    }
-
-    private fun sendTokenToServer(token: String) {
-        Log.d(TAG, "TODO: Envoyer ce token au serveur: $token")
     }
 }
