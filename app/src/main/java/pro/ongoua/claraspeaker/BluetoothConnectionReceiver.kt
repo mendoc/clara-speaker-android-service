@@ -37,18 +37,16 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                             voiceModel = null,
                             audioFilePath = null
                         )
-                        AudioPlayerManager.synthesizeAndPlay(context, introSummary)
+                        // On attend la fin complète (synthèse + lecture) de l'intro avant d'enchaîner.
+                        AudioPlayerManager.synthesizeAndPlayAwait(context, introSummary)
 
-                        // On attend un peu pour que l'intro se termine (à ajuster selon vos tests)
-                        delay(5000L)
-
-                        // On boucle sur chaque résumé en attente pour le lire
+                        // On lit chaque résumé en attente, en attendant la fin de chacun
+                        // avant de passer au suivant (sinon l'un interromprait l'autre).
                         for (summary in unplayedSummaries) {
                             Log.d(TAG, "Lecture du résumé ID: ${summary.id}")
-                            AudioPlayerManager.synthesizeAndPlay(context, summary)
-                            // On ajoute un délai pour laisser le temps à la lecture de se faire et pour marquer une pause
-                            // Ce délai est à ajuster en fonction de la longueur moyenne de vos résumés.
-                            delay(10000L)
+                            AudioPlayerManager.synthesizeAndPlayAwait(context, summary)
+                            // Courte pause entre deux résumés.
+                            delay(800L)
                         }
 
                     } else {
