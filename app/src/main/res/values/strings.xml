@@ -12,4 +12,17 @@
     <string name="content_signed_in_as">Connecté : %1$s</string>
     <string name="content_sign_out">Se déconnecter</string>
     <string name="content_empty">Aucun résumé pour le moment.</string>
+
+    <!-- Liste des résumés -->
+    <string name="summary_status_pending">En attente</string>
+    <string name="summary_status_played">Joué</string>
+    <string name="summary_voice">Voix : %1$s</string>
+    <string name="summary_voice_unknown">Inconnue</string>
+    <string name="summary_play">Lire</string>
+    <string name="summary_stop">Arrêter</string>
+    <string name="summary_delete">Supprimer</string>
+    <string name="summary_delete_title">Supprimer ce résumé ?</string>
+    <string name="summary_delete_message">Le résumé et son fichier audio seront supprimés définitivement.</string>
+    <string name="summary_delete_confirm">Supprimer</string>
+    <string name="summary_delete_cancel">Annuler</string>
 </resources>

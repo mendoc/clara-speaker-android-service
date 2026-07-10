@@ -21,8 +21,8 @@ interface SummaryDao {
     @Query("SELECT * FROM summaries WHERE is_played = 0")
     suspend fun getUnplayed(): List<Summary>
 
-    // Récupère les 3 derniers résumés joués et sauvegardés
-    // LiveData permet à l'UI de se mettre à jour automatiquement
-    @Query("SELECT * FROM summaries WHERE is_played = 1 AND audio_file_path IS NOT NULL ORDER BY created_at DESC LIMIT 3")
-    fun getLatestPlayedSummaries(): LiveData<List<Summary>>
+    // Tous les résumés (joués et en attente), les plus récents d'abord.
+    // LiveData permet à l'UI de se mettre à jour automatiquement.
+    @Query("SELECT * FROM summaries ORDER BY created_at DESC")
+    fun getAllSummaries(): LiveData<List<Summary>>
 }

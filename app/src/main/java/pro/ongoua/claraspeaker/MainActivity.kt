@@ -23,6 +23,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.messaging.FirebaseMessaging
@@ -75,11 +76,13 @@ class MainActivity : AppCompatActivity() {
 
         setupRecyclerView()
 
-        // On observe les changements dans la base de données
-        summaryViewModel.latestSummaries.observe(this) { summaries ->
+        // On observe la liste des résumés et l'état de lecture / synthèse.
+        summaryViewModel.summaries.observe(this) { summaries ->
             summaryAdapter.submitList(summaries.orEmpty())
             emptyView.visibility = if (summaries.isNullOrEmpty()) View.VISIBLE else View.GONE
         }
+        summaryViewModel.playingId.observe(this) { summaryAdapter.setPlayingId(it) }
+        summaryViewModel.loadingId.observe(this) { summaryAdapter.setLoadingId(it) }
 
         signInButton.setOnClickListener { signInWithGoogle() }
         signOutButton.setOnClickListener { signOut() }
@@ -99,17 +102,22 @@ class MainActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         recyclerView = findViewById(R.id.recyclerView)
         summaryAdapter = SummaryAdapter(
-            onItemClicked = { summary ->
-                // Le clic est géré ici et transmis au ViewModel
-                summaryViewModel.onSummaryClicked(summary)
-            },
-            onDeleteClicked = { summary ->
-                // La suppression est gérée ici et transmise au ViewModel
-                summaryViewModel.deleteSummary(summary)
-            }
+            onPlayClicked = { summary -> summaryViewModel.onPlayClicked(summary) },
+            onDeleteClicked = { summary -> confirmDelete(summary) }
         )
         recyclerView.adapter = summaryAdapter
         recyclerView.layoutManager = LinearLayoutManager(this)
+    }
+
+    private fun confirmDelete(summary: Summary) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.summary_delete_title)
+            .setMessage(R.string.summary_delete_message)
+            .setNegativeButton(R.string.summary_delete_cancel, null)
+            .setPositiveButton(R.string.summary_delete_confirm) { _, _ ->
+                summaryViewModel.deleteSummary(summary)
+            }
+            .show()
     }
 
     private fun askBluetoothConnectPermission() {
