@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Vue d'ensemble
 
-Clara Speaker est un service Android (Kotlin, MVVM) qui reçoit des « résumés » textuels via Firebase Cloud Messaging (FCM), les convertit en audio avec l'API Google Cloud Text-to-Speech, et les lit automatiquement lorsqu'un casque Bluetooth est connecté. Un seul module : `app`.
+Clara Speaker est un service Android (Kotlin, MVVM) qui reçoit des « résumés » textuels via Firebase Cloud Messaging (FCM), les convertit en audio avec l'API ElevenLabs (Text-to-Speech), et les lit automatiquement lorsqu'un casque Bluetooth est connecté. Un seul module : `app`.
 
 ## Commandes
 
