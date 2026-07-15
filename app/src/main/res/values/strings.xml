@@ -12,6 +12,7 @@
     <string name="content_signed_in_as">Connecté : %1$s</string>
     <string name="content_sign_out">Se déconnecter</string>
     <string name="content_empty">Aucun résumé pour le moment.</string>
+    <string name="playback_stop_sequence">Stopper la lecture</string>
 
     <!-- Connexion Gmail (accès hors-ligne pour le backend) -->
     <string name="gmail_prompt">Autorisez l\'accès à vos emails pour recevoir des résumés.</string>

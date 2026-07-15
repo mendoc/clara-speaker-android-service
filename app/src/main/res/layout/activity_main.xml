@@ -156,6 +156,21 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/gmailBanner"
             tools:listitem="@layout/list_item_summary" />
+
+        <!-- Bouton d'arrêt global de la lecture séquentielle (visible uniquement
+             pendant la lecture d'une série de résumés). -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/stopSequenceButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:text="@string/playback_stop_sequence"
+            android:visibility="gone"
+            app:icon="@android:drawable/ic_media_pause"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            tools:visibility="visible" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 </FrameLayout>

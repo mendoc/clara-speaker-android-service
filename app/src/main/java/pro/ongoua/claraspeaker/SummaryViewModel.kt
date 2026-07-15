@@ -18,6 +18,12 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
     val playingId: LiveData<Int?> = AudioPlayerManager.playingId
     val loadingId: LiveData<Int?> = AudioPlayerManager.loadingId
 
+    // Vrai pendant une lecture séquentielle Bluetooth ; pilote le bouton d'arrêt global.
+    val sequencePlaying: LiveData<Boolean> = AudioPlayerManager.sequencePlaying
+
+    /** Stoppe toute la série de lectures séquentielles en cours. */
+    fun stopSequence() = AudioPlayerManager.stopSequence()
+
     /**
      * Bouton lecture d'un résumé :
      * - déjà synthétisé (audio local) → lecture/arrêt immédiat ;

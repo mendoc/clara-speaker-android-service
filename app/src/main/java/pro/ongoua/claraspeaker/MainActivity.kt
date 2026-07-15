@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var summaryAdapter: SummaryAdapter
     private lateinit var gmailStatusView: TextView
     private lateinit var gmailConnectButton: Button
+    private lateinit var stopSequenceButton: Button
 
     private val credentialManager by lazy { CredentialManager.create(this) }
     private val firebaseAuth by lazy { FirebaseAuth.getInstance() }
@@ -98,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         emptyView = findViewById(R.id.emptyView)
         gmailStatusView = findViewById(R.id.gmailStatusView)
         gmailConnectButton = findViewById(R.id.gmailConnectButton)
+        stopSequenceButton = findViewById(R.id.stopSequenceButton)
 
         setupRecyclerView()
 
@@ -108,10 +110,15 @@ class MainActivity : AppCompatActivity() {
         }
         summaryViewModel.playingId.observe(this) { summaryAdapter.setPlayingId(it) }
         summaryViewModel.loadingId.observe(this) { summaryAdapter.setLoadingId(it) }
+        // Le bouton d'arrêt global n'apparaît que pendant une lecture séquentielle.
+        summaryViewModel.sequencePlaying.observe(this) { playing ->
+            stopSequenceButton.visibility = if (playing == true) View.VISIBLE else View.GONE
+        }
 
         signInButton.setOnClickListener { signInWithGoogle() }
         signOutButton.setOnClickListener { signOut() }
         gmailConnectButton.setOnClickListener { connectGmail() }
+        stopSequenceButton.setOnClickListener { summaryViewModel.stopSequence() }
 
         // On demande la permission au démarrage
         askBluetoothConnectPermission()
@@ -218,6 +225,10 @@ class MainActivity : AppCompatActivity() {
             firebaseAuth.signInWithCredential(firebaseCredential)
                 .addOnSuccessListener {
                     SessionStore.save(this, accountId, email)
+                    // On enregistre le profil Google (prénom, nom, photo, langue…) pour
+                    // la personnalisation des réponses LLM côté backend. Firebase est
+                    // authentifié ici, donc l'écriture Firestore passe les règles.
+                    FirestoreSync.updateProfile(accountId, profileFromIdToken(googleCredential.idToken))
                     showSignedIn(accountId, email)
                 }
                 .addOnFailureListener { e ->
@@ -231,20 +242,46 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Décode la charge utile (payload) d'un ID token JWT et en extrait le claim `sub`.
+     * Décode la charge utile (payload) d'un ID token JWT en objet de claims.
      */
-    private fun subjectFromIdToken(idToken: String): String? {
+    private fun claimsFromIdToken(idToken: String): JSONObject? {
         return try {
             val parts = idToken.split(".")
             if (parts.size < 2) return null
             val payload = String(
                 Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
             )
-            JSONObject(payload).optString("sub").ifEmpty { null }
+            JSONObject(payload)
         } catch (e: Exception) {
             Log.e(TAG, "Impossible de décoder l'ID token", e)
             null
         }
+    }
+
+    /** Le claim `sub` de l'ID token = ID de compte Google (= ID du document Firestore). */
+    private fun subjectFromIdToken(idToken: String): String? =
+        claimsFromIdToken(idToken)?.optString("sub")?.ifEmpty { null }
+
+    /**
+     * Extrait les claims de profil de l'ID token pour la personnalisation LLM backend :
+     * prénom, nom, nom complet, URL de photo et langue préférée. Les claims absents
+     * sont simplement omis (map partielle).
+     */
+    private fun profileFromIdToken(idToken: String): Map<String, Any> {
+        val claims = claimsFromIdToken(idToken) ?: return emptyMap()
+        val profile = mutableMapOf<String, Any>()
+        // clé Firestore -> claim OpenID Connect
+        val mapping = mapOf(
+            "givenName" to "given_name",
+            "familyName" to "family_name",
+            "displayName" to "name",
+            "photoUrl" to "picture",
+            "locale" to "locale"
+        )
+        for ((field, claim) in mapping) {
+            claims.optString(claim).ifEmpty { null }?.let { profile[field] = it }
+        }
+        return profile
     }
 
     /**
@@ -270,7 +307,7 @@ class MainActivity : AppCompatActivity() {
         contentView.visibility = View.VISIBLE
         accountView.text = getString(R.string.content_signed_in_as, email ?: accountId)
         updateGmailUi()
-        syncFcmToken(accountId)
+        syncFcmToken(accountId, email)
     }
 
     /**
@@ -279,7 +316,15 @@ class MainActivity : AppCompatActivity() {
      */
     private fun connectGmail() {
         val builder = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/gmail.readonly")))
+            .setRequestedScopes(
+                listOf(
+                    Scope("https://www.googleapis.com/auth/gmail.readonly"),
+                    // Requis pour que le backend puisse appeler userinfo.get() et déduire
+                    // l'ID du compte (nom du document Firestore). Sans ce scope, l'échange
+                    // du code renvoie 403 → le backend répond 500. Aligné sur le flux web.
+                    Scope("https://www.googleapis.com/auth/userinfo.profile")
+                )
+            )
             // Le serverClientId DOIT être le client Web (celui dont le backend a le secret),
             // pas le client Android. forceCodeForRefreshToken garantit un refresh token.
             .requestOfflineAccess(getString(R.string.default_web_client_id), true)
@@ -330,7 +375,10 @@ class MainActivity : AppCompatActivity() {
                     updateGmailUi()
                     Toast.makeText(this@MainActivity, R.string.gmail_connect_success, Toast.LENGTH_SHORT).show()
                 } else {
-                    Log.e(TAG, "Le backend a refusé le code (HTTP ${response.code()})")
+                    // On lit le corps d'erreur : le backend y place le message exact
+                    // (ex. échec de userinfo.get, invalid_grant…), indispensable au débogage.
+                    val errorBody = response.errorBody()?.string()
+                    Log.e(TAG, "Le backend a refusé le code (HTTP ${response.code()}) : $errorBody")
                     Toast.makeText(this@MainActivity, R.string.gmail_connect_failed, Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -365,14 +413,14 @@ class MainActivity : AppCompatActivity() {
     /**
      * Récupère le token FCM actuel et le synchronise dans Firestore pour le compte donné.
      */
-    private fun syncFcmToken(accountId: String) {
+    private fun syncFcmToken(accountId: String, email: String?) {
         // On utilise le lifecycleScope pour que la coroutine soit automatiquement
         // annulée si l'activité est détruite, évitant les fuites de mémoire.
         lifecycleScope.launch {
             try {
                 val token = FirebaseMessaging.getInstance().token.await()
                 Log.d(TAG, "Token FCM récupéré : $token")
-                FirestoreSync.updateFcmToken(accountId, token)
+                FirestoreSync.updateFcmToken(accountId, token, email)
             } catch (e: Exception) {
                 Log.e(TAG, "La récupération du token FCM a échoué", e)
             }

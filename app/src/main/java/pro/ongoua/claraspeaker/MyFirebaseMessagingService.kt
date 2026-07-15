@@ -1,5 +1,6 @@
 package pro.ongoua.claraspeaker
 
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -40,10 +41,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
                 // 2. On vérifie si les écouteurs sont connectés.
                 if (isBluetoothHeadsetConnected()) {
-                    Log.d(TAG, "Casque Bluetooth détecté. Lancement de la lecture immédiate.")
-                    // 3. On délègue la lecture ET la mise à jour au manager
-                    // en lui passant l'objet complet.
-                    AudioPlayerManager.synthesizeAndPlay(applicationContext, summaryWithId)
+                    Log.d(TAG, "Casque Bluetooth détecté. Lancement de la séquence.")
+                    // 3. On lance la séquence complète (comme à la connexion Bluetooth) :
+                    // le résumé qu'on vient d'insérer y sera inclus (getUnplayed), et si
+                    // une séquence tourne déjà, il sera enchaîné par la boucle en cours.
+                    AudioPlayerManager.startSequence(applicationContext)
                 } else {
                     Log.d(TAG, "Aucun casque connecté. Le résumé reste en attente dans la DB.")
                     // On n'a rien d'autre à faire. Le résumé est déjà sauvegardé.
@@ -65,8 +67,20 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         }
     }
 
+    /**
+     * Vrai si une sortie audio Bluetooth est *connectée* (casque, oreillettes…).
+     *
+     * On énumère les périphériques de sortie plutôt que d'utiliser le déprécié et peu
+     * fiable `isBluetoothA2dpOn`, qui ne renvoie true que si l'A2DP est le routage ACTIF :
+     * un casque connecté mais pas encore actif était ainsi ignoré.
+     */
     private fun isBluetoothHeadsetConnected(): Boolean {
         val audioManager = applicationContext.getSystemService(AUDIO_SERVICE) as AudioManager
-        return audioManager.isBluetoothA2dpOn
+        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
+            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                device.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+        }
     }
 }
