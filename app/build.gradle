@@ -97,6 +97,10 @@ dependencies {
     implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
     implementation 'com.google.android.gms:play-services-base:18.5.0'
 
+    // Authorization API : demande le scope gmail.readonly + un server auth code
+    // (accès hors-ligne) que l'app transmet au backend pour obtenir un refresh token.
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
+
     // Retrofit pour les appels réseau (2.9.0 est la dernière version stable majeure)
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'

@@ -14,20 +14,32 @@ object SessionStore {
     private const val PREFS = "clara_session"
     private const val KEY_ACCOUNT_ID = "account_id"
     private const val KEY_EMAIL = "email"
+    private const val KEY_GMAIL_CONNECTED = "gmail_connected"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun save(context: Context, accountId: String, email: String?) {
-        prefs(context).edit()
+        val editor = prefs(context).edit()
             .putString(KEY_ACCOUNT_ID, accountId)
             .putString(KEY_EMAIL, email)
-            .apply()
+        // Si on change de compte, l'état « Gmail connecté » ne vaut plus.
+        if (accountId != this.accountId(context)) {
+            editor.remove(KEY_GMAIL_CONNECTED)
+        }
+        editor.apply()
     }
 
     fun accountId(context: Context): String? = prefs(context).getString(KEY_ACCOUNT_ID, null)
 
     fun email(context: Context): String? = prefs(context).getString(KEY_EMAIL, null)
+
+    fun isGmailConnected(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_GMAIL_CONNECTED, false)
+
+    fun setGmailConnected(context: Context, connected: Boolean) {
+        prefs(context).edit().putBoolean(KEY_GMAIL_CONNECTED, connected).apply()
+    }
 
     fun clear(context: Context) {
         prefs(context).edit().clear().apply()

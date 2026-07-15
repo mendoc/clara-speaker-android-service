@@ -1,6 +1,7 @@
 package pro.ongoua.claraspeaker
 
 import android.Manifest
+import android.accounts.Account
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
@@ -10,6 +11,8 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
@@ -21,6 +24,11 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -58,9 +66,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var emptyView: TextView
     private lateinit var recyclerView: RecyclerView
     private lateinit var summaryAdapter: SummaryAdapter
+    private lateinit var gmailStatusView: TextView
+    private lateinit var gmailConnectButton: Button
 
     private val credentialManager by lazy { CredentialManager.create(this) }
     private val firebaseAuth by lazy { FirebaseAuth.getInstance() }
+
+    // Résultat de l'écran de consentement Gmail (server auth code via l'Authorization API).
+    private val authorizationLauncher =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { activityResult ->
+            try {
+                val result = Identity.getAuthorizationClient(this)
+                    .getAuthorizationResultFromIntent(activityResult.data)
+                handleAuthorizationResult(result)
+            } catch (e: ApiException) {
+                Log.e(TAG, "Consentement Gmail échoué ou annulé", e)
+                Toast.makeText(this, R.string.gmail_connect_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +96,8 @@ class MainActivity : AppCompatActivity() {
         accountView = findViewById(R.id.accountView)
         signOutButton = findViewById(R.id.signOutButton)
         emptyView = findViewById(R.id.emptyView)
+        gmailStatusView = findViewById(R.id.gmailStatusView)
+        gmailConnectButton = findViewById(R.id.gmailConnectButton)
 
         setupRecyclerView()
 
@@ -86,6 +111,7 @@ class MainActivity : AppCompatActivity() {
 
         signInButton.setOnClickListener { signInWithGoogle() }
         signOutButton.setOnClickListener { signOut() }
+        gmailConnectButton.setOnClickListener { connectGmail() }
 
         // On demande la permission au démarrage
         askBluetoothConnectPermission()
@@ -243,7 +269,82 @@ class MainActivity : AppCompatActivity() {
         authView.visibility = View.GONE
         contentView.visibility = View.VISIBLE
         accountView.text = getString(R.string.content_signed_in_as, email ?: accountId)
+        updateGmailUi()
         syncFcmToken(accountId)
+    }
+
+    /**
+     * Étape « Connecter Gmail » : demande le scope gmail.readonly + un server auth code
+     * (accès hors-ligne) contre le client Web, puis transmet le code au backend.
+     */
+    private fun connectGmail() {
+        val builder = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/gmail.readonly")))
+            // Le serverClientId DOIT être le client Web (celui dont le backend a le secret),
+            // pas le client Android. forceCodeForRefreshToken garantit un refresh token.
+            .requestOfflineAccess(getString(R.string.default_web_client_id), true)
+        // On cible le compte déjà connecté.
+        SessionStore.email(this)?.let { builder.setAccount(Account(it, "com.google")) }
+
+        Identity.getAuthorizationClient(this)
+            .authorize(builder.build())
+            .addOnSuccessListener { result ->
+                val pendingIntent = result.pendingIntent
+                if (result.hasResolution() && pendingIntent != null) {
+                    // Consentement requis : on lance l'écran système.
+                    try {
+                        authorizationLauncher.launch(
+                            IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Échec du lancement du consentement Gmail", e)
+                        Toast.makeText(this, R.string.gmail_connect_failed, Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    // Déjà autorisé : le code est disponible directement.
+                    handleAuthorizationResult(result)
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Autorisation Gmail échouée", e)
+                Toast.makeText(this, R.string.gmail_connect_failed, Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun handleAuthorizationResult(result: AuthorizationResult) {
+        val code = result.serverAuthCode
+        if (code == null) {
+            Log.e(TAG, "Aucun server auth code renvoyé par l'autorisation Gmail.")
+            Toast.makeText(this, R.string.gmail_connect_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        postAuthCodeToBackend(code)
+    }
+
+    private fun postAuthCodeToBackend(code: String) {
+        lifecycleScope.launch {
+            try {
+                val response = BackendClient.apiService.exchangeAuthCode(ExchangeCodeRequest(code))
+                if (response.isSuccessful) {
+                    SessionStore.setGmailConnected(this@MainActivity, true)
+                    updateGmailUi()
+                    Toast.makeText(this@MainActivity, R.string.gmail_connect_success, Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.e(TAG, "Le backend a refusé le code (HTTP ${response.code()})")
+                    Toast.makeText(this@MainActivity, R.string.gmail_connect_failed, Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Échec de l'envoi du code au backend", e)
+                Toast.makeText(this@MainActivity, R.string.gmail_connect_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun updateGmailUi() {
+        val connected = SessionStore.isGmailConnected(this)
+        gmailStatusView.text =
+            getString(if (connected) R.string.gmail_connected else R.string.gmail_prompt)
+        gmailConnectButton.visibility = if (connected) View.GONE else View.VISIBLE
     }
 
     private fun signOut() {

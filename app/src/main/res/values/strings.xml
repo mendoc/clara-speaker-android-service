@@ -13,6 +13,13 @@
     <string name="content_sign_out">Se déconnecter</string>
     <string name="content_empty">Aucun résumé pour le moment.</string>
 
+    <!-- Connexion Gmail (accès hors-ligne pour le backend) -->
+    <string name="gmail_prompt">Autorisez l\'accès à vos emails pour recevoir des résumés.</string>
+    <string name="gmail_connect">Connecter Gmail</string>
+    <string name="gmail_connected">Gmail connecté ✓</string>
+    <string name="gmail_connect_success">Gmail connecté.</string>
+    <string name="gmail_connect_failed">La connexion à Gmail a échoué. Réessayez.</string>
+
     <!-- Liste des résumés -->
     <string name="summary_status_pending">En attente</string>
     <string name="summary_status_played">Joué</string>
